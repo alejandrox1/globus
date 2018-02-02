@@ -37,6 +37,11 @@ goal. In terms of performance, analysing the effect these calls have on
 different places throughout the code will result in possibly a more efficient
 and performant server/client set up.
 
+Memory management wise, one of the most demanding tasks is done by the server
+storing a list of all the generated files. This was implemented using a scandir
+call which uses dynamically allocated memory, this will cause problems when the
+total number of files surpasses a couple thousand files.
+
 Furthermore, the use of threads is rather limited and better concurrency
 patterns may arise with future refactoring.
 
