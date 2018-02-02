@@ -17,10 +17,10 @@ working directories detailing
 
 The server has parameters to handle connection backlog and how many connections
 to manage concurrently.
-The client, on the other hand, was designed with minimal functionality, having
-a small CPU and memory footprint with easy to use options to specify the server
-to which it is to connect to. As such, the client creates only one connection
-during its lifetime.
+The client, on the other hand, was designed with minimal functionality in orde
+to provide optimal performance for the task; having a small CPU and memory 
+footprint with easy to use options to specify the server to which it is to 
+connect to. As such, the client creates only one connection during its lifetime.
 
 # Performance and Design
 While genrating the files to be transfered, the server will output to stdout
