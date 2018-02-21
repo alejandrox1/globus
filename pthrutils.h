@@ -4,13 +4,10 @@
 #include <pthread.h>
 
 
-struct params                                                                   
+typedef struct params_tag                                                                   
 {                                                                               
-	pthread_mutex_t mutex;                                                      
-	pthread_cond_t done;                                                        
-	int commfd;                                                                 
-};                                                                              
+	int sockfd;                                                                 
+} params_t;                                                                              
                                                                                 
-typedef struct params params_t;
 
 #endif // __PTHRUTILS_H__
