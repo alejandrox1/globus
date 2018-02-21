@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <openssl/md5.h>
 #include "tcputilities.h"
@@ -22,7 +23,7 @@
 
 
 #define BUFFSIZE 1024
-#define FNAMESIZE 10
+#define FNAMESIZE 11
 
 
 // sendString will send input from stdin to server.
@@ -108,6 +109,13 @@ void recvFile(int sockfd)
     }
 
 	int serverStatus;
+	char signalServer[] = "\0";                                     
+	serverStatus = send(sockfd, signalServer, strlen(signalServer)+1, 0);
+	if (serverStatus < 1)
+	{
+		fprintf(stderr, "Error signaling server\n");
+		exit(-1);
+	}
 	while ((serverStatus = checkSocket(sockfd)) == 0)
 	{
 		bzero(buf, BUFFSIZE); 

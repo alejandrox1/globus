@@ -13,7 +13,7 @@
 
 
 #define CONN_PORT 22000
-#define ERRMSG 1024
+#define ERRMSG 1025
 
 
 int main(int argc, char **argv)
