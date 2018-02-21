@@ -25,6 +25,8 @@
 #define BUFFSIZE 1024
 #define FNAMESIZE 11
 
+const char lofFileName[] = "server.log";
+
 
 // echoClient is an operation that will respond to a client by echoing back its
 // message.
@@ -92,19 +94,10 @@ int sendFile(int sockfd, const void * buf, int len)
 void serverSendFile(int sockfd, const char* filename)
 {
 	FILE *logFile;
-	const char lofFileName[] = "server.log";
 	unsigned char checksum[MD5_DIGEST_LENGTH];
 	MD5_CTX mdContext;
 	char buf[BUFFSIZE];
 	struct stat s;
-
-	// Log file.
-	logFile = fopen(lofFileName, "a");
-	if (logFile == NULL)
-	{
-		fprintf(stderr, "Error opening log file\n");
-		return;
-	}
 
 	// Locate and open file to send.
 	if (stat(filename, &s) < 0)
@@ -122,15 +115,14 @@ void serverSendFile(int sockfd, const char* filename)
 	// Send filename to client.
 	if (sendFile(sockfd, filename, strlen(filename)+1) != 0)
 		fprintf(stderr, "error sending filename to client\n");
-	fprintf(logFile, "%s ", filename);
 
 	// Send file size.
 	// conventional 32bit call
 	// long size = s.st_size;
 	// long tmpSize = htonl(size);
 	uint64_t size = (uint64_t)s.st_size;
+	uint64_t sizec = size;
 	uint64_t tmpSize = htobe64(s.st_size);
-	fprintf(logFile, "%ld ", size);
 	if (sendFile(sockfd, &tmpSize, sizeof(tmpSize)) == 0)
 	{
 		MD5_Init(&mdContext);
@@ -149,7 +141,16 @@ void serverSendFile(int sockfd, const char* filename)
 			size -= n;
 		}
 		MD5_Final(checksum, &mdContext);
+		
+		// Log file.                                                                
+		logFile = fopen(lofFileName, "a"); 
+		if (logFile == NULL)                                                        
+		{     
+			fprintf(stderr, "Error opening log file\n");    
+			return;                                                                 
+		}
 		int i;
+		fprintf(logFile, "%s %ld ", filename, sizec);
 		for (i=0; i<MD5_DIGEST_LENGTH; i++)
 			fprintf(logFile, "%02x", checksum[i]);
 		fprintf(logFile, "\n");
