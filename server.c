@@ -11,19 +11,24 @@
 #include <unistd.h>
 #include "errutilities.h"
 #include "fileutilities.h"
+#include "pthrutils.h"
 #include "serverops.h"
 #include "tcputilities.h"
 
 
 #define CONNPORT "22000"
 #define CONNMAX 10
-#define CONNBACKLOG 5
+#define CONNBACKLOG 10
 #define ERRMSG 1025
+#define NUMTHREADS 2
 
 
 int masterSocket, newSocket, clientSockets[CONNMAX];
 char filenames[NFILES][FNAMESIZE];
+pthread_t threads[NUMTHREADS];
+
 void startServer();
+void* handler(void* arg);
 void init()
 {
 	srand(time(NULL));
@@ -52,7 +57,7 @@ int main()
 
 	/* ACCEPT CONNECTIONS */
 	fd_set readfs;
-	int i, sd, activity, maxSD;
+	int i, status, tid=0, sd, activity, maxSD;
 	char errmsg[ERRMSG];                                                        
 	struct sockaddr_in clientaddr;     
 	socklen_t addrlen;
@@ -116,24 +121,25 @@ int main()
 				}
 			}
 		}
-			
+		
 		// Process client reuests.
 		for (i=0; i<CONNMAX; i++)
 		{
 			sd = clientSockets[i];
+
 			if (FD_ISSET(sd, &readfs))
 			{
-				printf("Sending files over to %d\n", sd);
-				int j;
-				for (j=0; j<NFILES; j++)
-				{
-					if (j%50==0)
-						printf("Sending file %d\n", j);
-					serverSendFile(sd, filenames[j]);
+				params_t *params = (params_t *)malloc(sizeof(params_t));            
+				params->sockfd = sd;
+				status = pthread_create(&threads[tid], NULL, handler, params);  
+				if (status != 0)
+				{ 
+					getError(status, errmsg);       
+					fprintf(stderr, "Error creating thread. %s\n", errmsg);     
+					break;   
 				}
-				closeSocket(sd);
-				clientSockets[i] = 0;
-				printf("Done sending files over to %d\n", sd);
+				tid = (tid+1) % NUMTHREADS;
+				clientSockets[i] = 0; 
 			}
 		}
 	}
@@ -216,4 +222,22 @@ void startServer()
 		fprintf(stderr, "Error while marking masterSocket as passive socket. %s\n", errmsg);
 		exit(-1);
 	}
+}
+
+
+void* handler(void* arg)
+{
+	int i;
+	params_t *params = (params_t *)arg;
+
+	printf("Sending files over to %d\n", params->sockfd);    
+	for (i=0; i<NFILES; i++)  
+	{                                                               
+		//if (i%100==0)  
+		//	printf("Sending file %d\n", i);                         
+		serverSendFile(params->sockfd, filenames[i]);                           
+	}                                                               
+	printf("Done sending files over to %d\n", params->sockfd); 
+	closeSocket(params->sockfd);
+	return NULL;
 }
