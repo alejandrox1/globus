@@ -23,7 +23,7 @@
 
 
 #define BUFFSIZE 1024
-#define FNAMESIZE 10
+#define FNAMESIZE 11
 
 
 // echoClient is an operation that will respond to a client by echoing back its
