@@ -4,7 +4,7 @@
 #include <errno.h>
 #include <string.h>
 
-#define ERRMSG 1024
+#define ERRMSG 1025
 
 
 // getError returns error message.

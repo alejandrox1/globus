@@ -10,7 +10,7 @@
 #include "errutilities.h"
 
 #define NFILES 1000
-#define FNAMESIZE 10 
+#define FNAMESIZE 11 
 
 
 // parseExtOUTFiles is a helper func for scandir, used to get all files with 
