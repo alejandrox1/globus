@@ -61,7 +61,7 @@ ps $SERVPID
 
 # Compare transfered files with the originals
 echo "comparing sorted log files..."                                            
-diff <(sort ${CWD}/${CDIR}/client.log) <(sort ${CWD}/${SDIR}/server.log) 
+diff <(sort ${CWD}/${CDIR}/client.log) <( awk '!seen[$0]++' ${CWD}/${SDIR}/server.log | sort) 
 # diff <(sort client.log) <(awk '!seen[$0]++' ../ts/server.log | sort )
 
 
