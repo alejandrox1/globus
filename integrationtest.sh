@@ -60,13 +60,13 @@ set +x
 ps $SERVPID
 
 # Compare transfered files with the originals
+echo "comparing sorted log files..."                                            
+diff <(sort ${CWD}/${CDIR}/client.log) <(sort ${CWD}/${SDIR}/server.log) 
+
 echo "comparing all files with diff and xxd..."
 for i in $(ls ${CWD}/${CDIR}/*.out | xargs -n 1 basename); 
 do
 	diff <(xxd ${CWD}/${CDIR}/${i}) <(xxd ${CWD}/${SDIR}/${i})
 done
-
-echo "comparing sorted log files..."
-diff <(sort ${CWD}/${CDIR}/client.log) <(sort ${CWD}/${SDIR}/server.log)
 
 kill $SERVPID
