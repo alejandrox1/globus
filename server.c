@@ -1,5 +1,7 @@
+#include <sys/select.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <netdb.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,26 +11,27 @@
 #include <unistd.h>
 #include "errutilities.h"
 #include "fileutilities.h"
-#include "pthrutils.h"
 #include "serverops.h"
 #include "tcputilities.h"
 
 
-#define NUMTHREADS 2
 #define CONNPORT "22000"
-#define CONNMAX 1000
-#define CONNBACKLOG 1000
-#define ERRMSG 1024
-#define NFILES 1000
+#define CONNMAX 10
+#define CONNBACKLOG 5
+#define ERRMSG 1025
 
 
-int listenfd;
+int masterSocket, newSocket, clientSockets[CONNMAX];
 char filenames[NFILES][FNAMESIZE];
 void startServer();
-void* handler(void*);
 void init()
 {
 	srand(time(NULL));
+
+	// Initialize all client sockets.
+	int i;
+	for (i=0; i<CONNMAX; i++)
+		clientSockets[i] = 0;
 
 }
 
@@ -48,54 +51,95 @@ int main()
 	startServer();
 
 	/* ACCEPT CONNECTIONS */
-	int status, tid = 0;
+	fd_set readfs;
+	int i, sd, activity, maxSD;
 	char errmsg[ERRMSG];                                                        
-	struct sockaddr_in clientaddr;                                              
+	struct sockaddr_in clientaddr;     
 	socklen_t addrlen;
-	pthread_t threads[NUMTHREADS];                                                         
-    params_t params;
-	pthread_mutex_init (&params.mutex, NULL);                                   
-	pthread_cond_init (&params.done, NULL);
-	pthread_mutex_lock(&params.mutex);
+	addrlen = sizeof(clientaddr);
 	while (1)
 	{
-		// System call extracts the 1st connection request on queue of pending
-		// connections (CONNBACKLOG) for listening socket and creates a new
-		// connected socket, returning a file descriptor refereing to that 
-		// socket.
-		addrlen = sizeof(clientaddr);
-		int commfd = accept(listenfd, (struct sockaddr *)&clientaddr, &addrlen);
-		// Error accepting connection.
-		if (commfd < 0)
-		{	
-			getError(errno, errmsg);
-			fprintf(stderr, "Error accepting request. %s\n", errmsg);
-			if((errno == ENETDOWN || errno == EPROTO || errno == ENOPROTOOPT || 
-						errno == EHOSTDOWN || errno == ENONET || 
-						errno == EHOSTUNREACH || errno == EOPNOTSUPP || 
-						errno == ENETUNREACH)) 
-			{
-				continue;
-			}
-			break;
-			
-		}
-		// Process client reuests.
-		else 
+		// Clear the socket set. 
+		FD_ZERO(&readfs);                                                                                                                               
+        // Add master socket to set.
+		FD_SET(masterSocket, &readfs);                                         
+		maxSD = masterSocket;
+		
+		for (i=0; i<CONNMAX; i++)
 		{
-			params.commfd = commfd;
-			status = pthread_create(&threads[tid], NULL, handler, &params);
-			if (status != 0)                                                        
-				fprintf(stderr, "Error creating thread. %s\n", errmsg);
-			pthread_cond_wait(&params.done, &params.mutex);
-			tid = (tid+1) % NUMTHREADS;
+			sd = clientSockets[i];
+			
+			// If valid socket descriptor then add to ead list.
+			if (sd > 0)
+				FD_SET(sd, &readfs);
+			// Highest file descriptor number, need it for select function.    
+			if (sd > maxSD)
+				maxSD = sd;
+		} 
+		// Wait for an activity on sockets.
+		activity = select(maxSD+1, &readfs, NULL, NULL, NULL);
+		if ((activity < 0) && (errno!=EINTR)) 
+		{
+			getError(errno, errmsg);
+			fprintf(stderr, "Error on select. %s\n", errmsg);
+			continue;
+		}
+
+		// Accept incoming connection.                                                          
+		if (FD_ISSET(masterSocket, &readfs))  
+		{
+			// System call extracts the 1st connection request on queue of 
+			// pending connections (CONNBACKLOG) for listening socket and 
+			// creates a new connected socket, returning a file descriptor 
+			// refereing to that socket.
+			int commfd = accept(masterSocket, (struct sockaddr *)&clientaddr, &addrlen);
+			if (commfd < 0)
+			{	
+				getError(errno, errmsg);
+				fprintf(stderr, "Error accepting request. %s\n", errmsg);
+				if((errno == ENETDOWN || errno == EPROTO || errno == ENOPROTOOPT || errno == EHOSTDOWN || errno == ENONET || 
+						errno == EHOSTUNREACH || errno == EOPNOTSUPP || errno == ENETUNREACH)) 
+				{
+					continue;
+				}
+				break;
+			}
+			printf("New connection, socket %d, ip: %s, port: %d\n", commfd, inet_ntoa(clientaddr.sin_addr), ntohs(clientaddr.sin_port));
+			// Add new socket to array of sockets. 
+			for (i=0; i<CONNMAX; i++)
+			{  
+				// If position is empty. 
+				if (clientSockets[i] == 0)
+				{ 
+					clientSockets[i] = commfd;
+					break; 
+				}
+			}
+		}
+			
+		// Process client reuests.
+		for (i=0; i<CONNMAX; i++)
+		{
+			sd = clientSockets[i];
+			if (FD_ISSET(sd, &readfs))
+			{
+				printf("Sending files over to %d\n", sd);
+				int j;
+				for (j=0; j<NFILES; j++)
+				{
+					if (j%50==0)
+						printf("Sending file %d\n", j);
+					serverSendFile(sd, filenames[j]);
+				}
+				closeSocket(sd);
+				clientSockets[i] = 0;
+				printf("Done sending files over to %d\n", sd);
+			}
 		}
 	}
 
-	pthread_mutex_destroy(&params.mutex);                                       
-	pthread_cond_destroy(&params.done);
-	shutdown(listenfd, SHUT_RDWR);
-	close(listenfd);
+	shutdown(masterSocket, SHUT_RDWR);
+	close(masterSocket);
 
 	exit(0);
 }
@@ -104,7 +148,7 @@ int main()
 
 void startServer() 
 {
-	int status;
+	int status, opt=1;
 	char errmsg[ERRMSG];
 	char port[6];
 	strcpy(port, CONNPORT);
@@ -130,18 +174,27 @@ void startServer()
 		// Creates and endpoint for communication and return a file descriptor.     
 		// The first argument specifies the communication domain; selects the 
 		// protocol family to be used.                                           
-		listenfd = socket(p->ai_family, p->ai_socktype, 0);                           
-		if (listenfd < 0)                                                          
+		masterSocket = socket(p->ai_family, p->ai_socktype, 0);                           
+		if (masterSocket <= 0)                                                          
 		{                                                   
 			getError(errno, errmsg);
 			fprintf(stderr, "Error creating a socket. %s\n", errmsg);      
 			continue;                        
 		}
+		// Allow multiple connections.
+		status = setsockopt(masterSocket, SOL_SOCKET, SO_REUSEADDR, (char*)&opt, sizeof(opt));
+		if (status < 0)
+		{
+			getError(errno, errmsg);
+			fprintf(stderr, "Error setting sock opts. %s\n", errmsg);           
+			break;
+		}
 		// Bind a name to a socket. Assign the address specified by servaddr to 
-		// socket refered by file descriptor listenfd.                                                    
-		status = bind(listenfd, p->ai_addr, p->ai_addrlen);  
+		// socket refered by file descriptor masterSocket.                                                    
+		status = bind(masterSocket, p->ai_addr, p->ai_addrlen);  
 		if (status == 0)
 			break;
+		printf("Listening on port %s\n", port);
 	}
 	if (p==NULL)
 	{
@@ -156,27 +209,11 @@ void startServer()
 	// Listen for connections on a socket.
 	// Mark the socket lsiten_fd as a passive socket (accept incoming 
 	// connection requests).                                                           
-	status = listen(listenfd, CONNBACKLOG);
+	status = listen(masterSocket, CONNBACKLOG);
 	if (status < 0)
 	{
 		getError(errno, errmsg);
-		fprintf(stderr, "Error while marking listenfd as passive socket. %s\n", errmsg);
+		fprintf(stderr, "Error while marking masterSocket as passive socket. %s\n", errmsg);
 		exit(-1);
 	}
-}
-
-
-void* handler(void* args)
-{
-	int i, commfd;
-	pthread_mutex_lock(&(*(params_t*)(args)).mutex);                                                                          
-	commfd = (*(params_t*)(args)).commfd;                                         
-	pthread_mutex_unlock(&(*(params_t*)(args)).mutex);                           
-	pthread_cond_signal(&(*(params_t*)(args)).done);
-
-	for (i=0; i<NFILES; i++)                                               
-		serverSendFile(commfd, filenames[i]); 
-
-	closeSocket(commfd);
-	return NULL;
 }
