@@ -1,3 +1,4 @@
+#include <pthread.h>
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -14,6 +15,14 @@
 
 #define CONN_PORT 22000
 #define ERRMSG 1025
+
+void* clientWrapper(void* arg)
+{
+	int *sockfd = (int*)arg;
+	recvFile(*sockfd);
+	closeSocket(*sockfd);
+	return NULL;
+}
 
 
 int main(int argc, char **argv)
@@ -47,9 +56,18 @@ int main(int argc, char **argv)
 	}
 
 	/* Server entrypoint */
-	recvFile(sockfd);
-	
-	closeSocket(sockfd);
+	//recvFile(sockfd);
+	//closeSocket(sockfd);
+	pthread_t threadID;
+	status = pthread_create(&threadID, NULL, clientWrapper, &sockfd);
+	if (status != 0)
+	{
+		getError(errno, errmsg);                                                
+		fprintf(stderr, "Error creating thread. %s\n", errmsg);               
+		exit(1);
+	}
+	pthread_join(threadID, NULL);
+
 	exit(0);
 }
 
