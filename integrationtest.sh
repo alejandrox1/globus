@@ -62,6 +62,8 @@ ps $SERVPID
 # Compare transfered files with the originals
 echo "comparing sorted log files..."                                            
 diff <(sort ${CWD}/${CDIR}/client.log) <(sort ${CWD}/${SDIR}/server.log) 
+# diff <(sort client.log) <(awk '!seen[$0]++' ../ts/server.log | sort )
+
 
 echo "comparing all files with diff and xxd..."
 for i in $(ls ${CWD}/${CDIR}/*.out | xargs -n 1 basename); 
